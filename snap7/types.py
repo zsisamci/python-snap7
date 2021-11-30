@@ -7,7 +7,7 @@ from snap7.common import ADict
 from enum import Enum
 
 S7Object = ctypes.c_void_p
-buffer_size = 65536
+buffer_size = 65535  # snap7 max packet
 buffer_type = ctypes.c_ubyte * buffer_size
 time_t = ctypes.c_uint64  # TODO: check if this is valid for all platforms
 word = ctypes.c_uint16
