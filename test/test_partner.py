@@ -1,4 +1,5 @@
 import logging
+import time
 import unittest as unittest
 from unittest import mock
 
@@ -9,41 +10,66 @@ logging.basicConfig(level=logging.WARNING)
 
 
 class TestPartner(unittest.TestCase):
+
+    passive_partner = None
+    #active_partner = None
+
+    @classmethod
+    def setUpClass(cls):
+        cls.passive_partner = snap7.partner.Partner(active=False)
+        cls.passive_partner.start_to("0.0.0.0","127.0.0.1",4098,4098)
+        #time.sleep(1)
+        #cls.active_partner = snap7.partner.Partner(active=True)
+        #cls.active_partner.start_to("0.0.0.0","127.0.0.1",4098,4098)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.passive_partner.stop()
+        cls.passive_partner.destroy()
+        #cls.active_partner.stop()
+        #cls.active_partner.destroy()
+
     def setUp(self):
-        self.partner = snap7.partner.Partner()
-        self.partner.start()
+        self.active_partner = snap7.partner.Partner(active=True)
+        self.active_partner.start_to("0.0.0.0","127.0.0.1",4098,4098)
+        time.sleep(1)
+        self.assertEqual(self.passive_partner.get_status(),3)
 
     def tearDown(self):
-        self.partner.stop()
-        self.partner.destroy()
+        self.active_partner.stop()
+        self.active_partner.destroy()
 
     def test_as_b_send(self):
-        self.partner.as_b_send()
+        self.passive_partner.as_b_send(bytearray(b'test'),1)
+        self.assertEqual(self.active_partner.b_recv(),(1,bytearray(b'test')))
 
-    @unittest.skip("we don't recv something yet")
+
     def test_b_recv(self):
-        self.partner.b_recv()
+        self.active_partner.as_b_send(bytearray(b'test'),1)
+        self.assertEqual(self.passive_partner.b_recv(200),(1,bytearray(b'test')))
 
     def test_b_send(self):
-        self.partner.b_send()
+        self.passive_partner.b_send(bytearray(b'test'),1)
 
     def test_check_as_b_recv_completion(self):
-        self.partner.check_as_b_recv_completion()
+        self.active_partner.as_b_send(bytearray(b'test'),1)
+        time.sleep(0.01)
+        self.assertEqual(self.passive_partner.check_as_b_recv_completion(),(1,bytearray(b'test')))
 
     def test_check_as_b_send_completion(self):
-        self.partner.check_as_b_send_completion()
+        self.passive_partner.check_as_b_send_completion()
 
     def test_create(self):
-        self.partner.create()
+        self.passive_partner.create()
 
     def test_destroy(self):
-        self.partner.destroy()
+        self.passive_partner.destroy()
 
     def test_error_text(self):
         snap7.common.error_text(0, context="partner")
 
     def test_get_last_error(self):
-        self.partner.get_last_error()
+        self.passive_partner.get_last_error()
 
     def test_get_param(self):
         expected = (
@@ -62,19 +88,20 @@ class TestPartner(unittest.TestCase):
             (snap7.types.KeepAliveTime, 5000),
         )
         for param, value in expected:
-            self.assertEqual(self.partner.get_param(param), value)
+            self.assertEqual(self.passive_partner.get_param(param), value)
 
-        self.assertRaises(Exception, self.partner.get_param,
+        self.assertRaises(Exception, self.passive_partner.get_param,
                           snap7.types.MaxClients)
 
     def test_get_stats(self):
-        self.partner.get_stats()
+        self.assertTupleEqual(self.passive_partner.get_stats(),(0,0,0,0))
 
     def test_get_status(self):
-        self.partner.get_status()
+        self.assertIn(self.passive_partner.get_status(),(0,1,2,3))
 
     def test_get_times(self):
-        self.partner.get_times()
+        self.assertTupleEqual(self.passive_partner.get_times(),(0,0))
+
 
     def test_set_param(self):
         values = (
@@ -92,28 +119,28 @@ class TestPartner(unittest.TestCase):
             (snap7.types.KeepAliveTime, 4000),
         )
         for param, value in values:
-            self.partner.set_param(param, value)
+            self.passive_partner.set_param(param, value)
 
-        self.assertRaises(Exception, self.partner.set_param,
+        self.assertRaises(Exception, self.passive_partner.set_param,
                           snap7.types.RemotePort, 1)
 
     def test_set_recv_callback(self):
-        self.partner.set_recv_callback()
+        self.passive_partner.set_recv_callback()
 
     def test_set_send_callback(self):
-        self.partner.set_send_callback()
+        self.passive_partner.set_send_callback()
 
     def test_start(self):
-        self.partner.start()
+        self.passive_partner.start()
 
     def test_start_to(self):
-        self.partner.start_to('0.0.0.0', '0.0.0.0', 0, 0)
+        self.passive_partner.start_to('0.0.0.0', '0.0.0.0', 0, 0)
 
     def test_stop(self):
-        self.partner.stop()
+        self.passive_partner.stop()
 
     def test_wait_as_b_send_completion(self):
-        self.assertRaises(Snap7Exception, self.partner.wait_as_b_send_completion)
+        self.assertRaises(Snap7Exception, self.passive_partner.wait_as_b_send_completion)
 
 
 class TestLibraryIntegration(unittest.TestCase):
