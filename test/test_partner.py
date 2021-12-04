@@ -2,6 +2,8 @@ import logging
 import time
 import unittest as unittest
 from unittest import mock
+from multiprocessing.context import Process
+
 
 import snap7.partner
 from snap7.exceptions import Snap7Exception
@@ -9,67 +11,78 @@ from snap7.exceptions import Snap7Exception
 logging.basicConfig(level=logging.WARNING)
 
 
+def passive_partner_echo():
+    passive_partner = snap7.partner.Partner(active=False)
+    passive_partner.start_to("0.0.0.0", "127.0.0.1", 4098, 4098)
+    recived = passive_partner.check_as_b_recv_completion()
+    while True:
+        while passive_partner.get_status() == 3:
+            recived = passive_partner.check_as_b_recv_completion()
+            if recived:
+                rid, data = recived
+                passive_partner.b_send(data, rid)
+            time.sleep(0.01)
+
+
 class TestPartner(unittest.TestCase):
 
-    passive_partner = None
-    #active_partner = None
+    process = None
 
     @classmethod
     def setUpClass(cls):
-        cls.passive_partner = snap7.partner.Partner(active=False)
-        cls.passive_partner.start_to("0.0.0.0","127.0.0.1",4098,4098)
-        #time.sleep(1)
-        #cls.active_partner = snap7.partner.Partner(active=True)
-        #cls.active_partner.start_to("0.0.0.0","127.0.0.1",4098,4098)
+        cls.process = Process(target=passive_partner_echo)
+        cls.process.start()
 
     @classmethod
     def tearDownClass(cls):
-        cls.passive_partner.stop()
-        cls.passive_partner.destroy()
-        #cls.active_partner.stop()
-        #cls.active_partner.destroy()
+        cls.process.terminate()
+        cls.process.join(1)
+        if cls.process.is_alive():
+            cls.process.kill()
 
     def setUp(self):
         self.active_partner = snap7.partner.Partner(active=True)
-        self.active_partner.start_to("0.0.0.0","127.0.0.1",4098,4098)
+        self.active_partner.start_to("0.0.0.0", "127.0.0.1", 4098, 4098)
         time.sleep(1)
-        self.assertEqual(self.passive_partner.get_status(),3)
+        self.assertEqual(self.active_partner.get_status(), 3)
 
     def tearDown(self):
         self.active_partner.stop()
         self.active_partner.destroy()
 
     def test_as_b_send(self):
-        self.passive_partner.as_b_send(bytearray(b'test'),1)
-        self.assertEqual(self.active_partner.b_recv(),(1,bytearray(b'test')))
-
+        self.active_partner.as_b_send(bytearray(b'test'), 1)
+        self.assertEqual(self.active_partner.b_recv(500), (1, bytearray(b'test')))
 
     def test_b_recv(self):
-        self.active_partner.as_b_send(bytearray(b'test'),1)
-        self.assertEqual(self.passive_partner.b_recv(200),(1,bytearray(b'test')))
+        self.active_partner.as_b_send(bytearray(b'test'), 1)
+        self.assertEqual(self.active_partner.b_recv(200), (1, bytearray(b'test')))
 
     def test_b_send(self):
-        self.passive_partner.b_send(bytearray(b'test'),1)
+        self.active_partner.b_send(bytearray(b'test'), 1)
+        self.assertEqual(self.active_partner.b_recv(200), (1, bytearray(b'test')))
 
     def test_check_as_b_recv_completion(self):
-        self.active_partner.as_b_send(bytearray(b'test'),1)
-        time.sleep(0.01)
-        self.assertEqual(self.passive_partner.check_as_b_recv_completion(),(1,bytearray(b'test')))
+        self.active_partner.as_b_send(bytearray(b'test'), 1)
+        time.sleep(0.2)
+        self.assertEqual(self.active_partner.check_as_b_recv_completion(), (1, bytearray(b'test')))
 
     def test_check_as_b_send_completion(self):
-        self.passive_partner.check_as_b_send_completion()
+        self.active_partner.b_send(bytearray(b'test'), 1)
+        time.sleep(0.01)
+        self.active_partner.check_as_b_send_completion()
 
     def test_create(self):
-        self.passive_partner.create()
+        self.active_partner.create()
 
     def test_destroy(self):
-        self.passive_partner.destroy()
+        self.active_partner.destroy()
 
     def test_error_text(self):
         snap7.common.error_text(0, context="partner")
 
     def test_get_last_error(self):
-        self.passive_partner.get_last_error()
+        self.active_partner.get_last_error()
 
     def test_get_param(self):
         expected = (
@@ -88,20 +101,19 @@ class TestPartner(unittest.TestCase):
             (snap7.types.KeepAliveTime, 5000),
         )
         for param, value in expected:
-            self.assertEqual(self.passive_partner.get_param(param), value)
+            self.assertEqual(self.active_partner.get_param(param), value)
 
-        self.assertRaises(Exception, self.passive_partner.get_param,
+        self.assertRaises(Exception, self.active_partner.get_param,
                           snap7.types.MaxClients)
 
     def test_get_stats(self):
-        self.assertTupleEqual(self.passive_partner.get_stats(),(0,0,0,0))
+        self.assertTupleEqual(self.active_partner.get_stats(), (0, 0, 0, 0))
 
     def test_get_status(self):
-        self.assertIn(self.passive_partner.get_status(),(0,1,2,3))
+        self.assertIn(self.active_partner.get_status(), (0, 1, 2, 3))
 
     def test_get_times(self):
-        self.assertTupleEqual(self.passive_partner.get_times(),(0,0))
-
+        self.assertTupleEqual(self.active_partner.get_times(), (0, 0))
 
     def test_set_param(self):
         values = (
@@ -119,28 +131,28 @@ class TestPartner(unittest.TestCase):
             (snap7.types.KeepAliveTime, 4000),
         )
         for param, value in values:
-            self.passive_partner.set_param(param, value)
+            self.active_partner.set_param(param, value)
 
-        self.assertRaises(Exception, self.passive_partner.set_param,
+        self.assertRaises(Exception, self.active_partner.set_param,
                           snap7.types.RemotePort, 1)
 
     def test_set_recv_callback(self):
-        self.passive_partner.set_recv_callback()
+        self.active_partner.set_recv_callback()
 
     def test_set_send_callback(self):
-        self.passive_partner.set_send_callback()
+        self.active_partner.set_send_callback()
 
     def test_start(self):
-        self.passive_partner.start()
+        self.active_partner.start()
 
     def test_start_to(self):
-        self.passive_partner.start_to('0.0.0.0', '0.0.0.0', 0, 0)
+        self.active_partner.start_to('0.0.0.0', '0.0.0.0', 0, 0)
 
     def test_stop(self):
-        self.passive_partner.stop()
+        self.active_partner.stop()
 
     def test_wait_as_b_send_completion(self):
-        self.assertRaises(Snap7Exception, self.passive_partner.wait_as_b_send_completion)
+        self.assertRaises(Snap7Exception, self.active_partner.wait_as_b_send_completion)
 
 
 class TestLibraryIntegration(unittest.TestCase):
