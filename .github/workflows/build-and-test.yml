@@ -4,6 +4,9 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+    
+  workflow_dispatch:   
+  
 env:
   snap7-archive-url: https://sourceforge.net/projects/snap7/files/1.4.2/snap7-full-1.4.2.7z/download
 jobs:
